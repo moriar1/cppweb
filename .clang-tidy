@@ -1,0 +1,30 @@
+Checks:
+  - '*'
+  - -llvmlibc-*
+  - -readability-magic-numbers
+  - -readability-identifier-length
+  - -altera-unroll-loops
+  - -modernize-use-trailing-return-type
+  - -fuchsia-overloaded-operator
+  - -misc-use-anonymous-namespace
+  - -fuchsia-default-arguments-calls
+  - -altera-struct-pack-align
+  - -google-readability-todo
+  # - -fuchsia-trailing-return
+  # - -clang-diagnostic-missing-include-dirs
+  # - -altera-struct-pack-align
+  # - -cppcoreguidelines-avoid-magic-numbers
+  # - -cppcoreguidelines-init-variables
+  # - -bugprone-assignment-in-if-condition
+  # - -cert-err33-c
+  # - -readability-isolate-declaration
+  # - -bugprone-easily-swappable-parameters
+  # - -concurrency-mt-unsafe
+  # - -google-readability-todo
+  # - -cppcoreguidelines-avoid-non-const-global-variables
+  # - -android-cloexec-open
+  # - -android-cloexec-accept
+  # - -readability-function-cognitive-complexity
+  # - -android-cloexec-fopen
+  # - -android-cloexec-pipe
+UseColor: true
