@@ -10,6 +10,8 @@ Checks:
   - -fuchsia-default-arguments-calls
   - -altera-struct-pack-align
   - -google-readability-todo
+  - -abseil-string-find-startswith
+  - -cppcoreguidelines-avoid-magic-numbers
   # - -fuchsia-trailing-return
   # - -clang-diagnostic-missing-include-dirs
   # - -altera-struct-pack-align

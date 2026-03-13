@@ -1,10 +1,17 @@
+
+#include <cpr/cpr.h>
+
+#include <cpr/error.h>
 #include <exception>
 #include <fstream>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+using json = nlohmann::json;
 
 struct CsvFileError : public std::runtime_error {
   using std::runtime_error::runtime_error;
@@ -12,6 +19,10 @@ struct CsvFileError : public std::runtime_error {
 
 struct CommunityNotFound : public std::out_of_range {
   using std::out_of_range::out_of_range;
+};
+
+struct HttpError : public std::runtime_error {
+  using std::runtime_error::runtime_error;
 };
 
 struct PostData {
@@ -44,8 +55,11 @@ static PostData read_data(const std::string &csv_path) {
   }
 
   std::string line;
-  if (!std::getline(fs, line) || line.empty()) {
+  if (!std::getline(fs, line)) { // read header
     throw CsvFileError("File is empty or unreadable: " + csv_path);
+  }
+  if (!std::getline(fs, line) || line.empty()) { // read first record
+    throw CsvFileError("Record is empty: " + csv_path);
   }
 
   PostData post;
@@ -73,19 +87,34 @@ static PostData read_data(const std::string &csv_path) {
   return post;
 }
 
+static std::string upload_image(std::string &path) {
+  // TODO: check if path exists
+  cpr::Response r = cpr::Post(cpr::Url{"https://api.imgchest.com/v1/post"},
+                              cpr::Header{{"Accept", "application/json"}},
+                              cpr::Bearer{"TODO: read from json"},
+                              cpr::Multipart{{"images[]", cpr::File{path}}});
+
+  if (r.error) {
+    throw HttpError("Failed upload image: Network error: " + r.error.message);
+  }
+  if (r.status_code != 200) {
+    throw HttpError("Failed upload image: API error: " +
+                    std::to_string(r.status_code) + " " + r.text);
+  }
+  return json::parse(r.text)["data"]["images"][0]["link"]; // TODO: better err
+}
 int main() {
   try {
     PostData post = read_data("temp.csv");
     std::cout << post.community_id << ' ' << post.title << ' '
               << post.image_file_path << ' ' << post.body << '\n';
 
-  } catch (const CsvFileError &ex) {
-    std::cerr << ":: Err: " << ex.what() << '\n';
-  } catch (const CommunityNotFound &ex) {
-    std::cerr << ":: Err: " << ex.what() << '\n';
+    if ((post.image_file_path.find("https://", 0, 8)) != 0) { // if not url
+      std::string link = upload_image(post.image_file_path);
+      std::cout << link << '\n';
+    }
+
   } catch (const std::exception &ex) {
-    std::cerr << ":: Err: " << ex.what();
-  } catch (...) {
-    std::cerr << ":: Err: unknown\n";
+    std::cerr << ":: Err: " << ex.what() << '\n';
   }
 }

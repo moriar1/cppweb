@@ -1,7 +1,13 @@
 cmake_minimum_required(VERSION 3.25)
 
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# Usefull things
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+endif()
 
 project(
     cppweb
@@ -18,6 +24,12 @@ FetchContent_Declare(cpr GIT_REPOSITORY https://github.com/libcpr/cpr.git
                          GIT_TAG 1.14.2
                          SYSTEM)
 FetchContent_MakeAvailable(cpr)
+
+FetchContent_Declare(json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+    SYSTEM)
+FetchContent_MakeAvailable(json)
 
 # ---- Compile options (interface targets) ----
 
@@ -76,7 +88,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Threads::Threads
     cpr::cpr
+    nlohmann_json::nlohmann_json
     project_hardening
     project_warnings
     project_sanitizers
     project_performance)
+
