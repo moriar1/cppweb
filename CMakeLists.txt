@@ -19,6 +19,12 @@ FetchContent_Declare(cpr GIT_REPOSITORY https://github.com/libcpr/cpr.git
                          SYSTEM)
 FetchContent_MakeAvailable(cpr)
 
+FetchContent_Declare(json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+    SYSTEM)
+FetchContent_MakeAvailable(json)
+
 # ---- Compile options (interface targets) ----
 
 # Warnings
@@ -76,6 +82,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Threads::Threads
     cpr::cpr
+    nlohmann_json::nlohmann_json
     project_hardening
     project_warnings
     project_sanitizers
