@@ -13,21 +13,8 @@ Checks:
   - -abseil-string-find-startswith
   - -cppcoreguidelines-avoid-magic-numbers
   - -cppcoreguidelines-pro-type-reinterpret-cast
-  # - -fuchsia-trailing-return
-  # - -clang-diagnostic-missing-include-dirs
-  # - -altera-struct-pack-align
-  # - -cppcoreguidelines-avoid-magic-numbers
-  # - -cppcoreguidelines-init-variables
-  # - -bugprone-assignment-in-if-condition
-  # - -cert-err33-c
-  # - -readability-isolate-declaration
-  # - -bugprone-easily-swappable-parameters
-  # - -concurrency-mt-unsafe
-  # - -google-readability-todo
-  # - -cppcoreguidelines-avoid-non-const-global-variables
-  # - -android-cloexec-open
-  # - -android-cloexec-accept
-  # - -readability-function-cognitive-complexity
-  # - -android-cloexec-fopen
-  # - -android-cloexec-pipe
+  - -bugprone-assignment-in-if-condition
+  - -android-cloexec-accept
+  - -google-runtime-int
+  - -concurrency-mt-unsafe # for exit()
 UseColor: true
