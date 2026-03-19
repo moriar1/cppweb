@@ -17,4 +17,5 @@ Checks:
   - -android-cloexec-accept
   - -google-runtime-int
   - -concurrency-mt-unsafe # for exit()
+  - -fuchsia-default-arguments-declarations
 UseColor: true

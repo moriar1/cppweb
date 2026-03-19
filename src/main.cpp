@@ -24,6 +24,7 @@ class GetAddrInfo {
   addrinfo *res{};
 
 public:
+  GetAddrInfo() = delete;
   GetAddrInfo(const GetAddrInfo &) = delete;
   GetAddrInfo(GetAddrInfo &&) = delete;
   GetAddrInfo &operator=(const GetAddrInfo &) = delete;
@@ -38,9 +39,47 @@ public:
   ~GetAddrInfo() { freeaddrinfo(res); }
 };
 
+class Socket {
+  int fd = -1;
+
+public:
+  explicit Socket(int s = -1) : fd(s) {}
+  ~Socket() {
+    if (fd != -1) {
+      close(fd);
+    }
+  }
+
+  // Move
+  Socket(Socket &&other) noexcept : fd{other.fd} { other.fd = -1; }
+  Socket &operator=(Socket &&other) noexcept {
+    if (this != &other) {
+      if (fd != -1) {
+        close(fd);
+      }
+      fd = other.fd;
+      other.fd = -1;
+    }
+    return *this;
+  }
+
+  // Copy deleted
+  Socket(const Socket &) = delete;
+  Socket &operator=(const Socket &) = delete;
+
+  // [[nodiscard]] int get() const { return fd; }
+  void reset(int s = -1) {
+    if (fd != -1) {
+      close(fd);
+    }
+    fd = s;
+  }
+  operator int() const { return fd; }
+};
+
 } // namespace
 
-static void sigchld_handler(int /* s */) {
+static void sigchld_handler(int /* s */) noexcept {
   int saved_errno = errno;
   while (waitpid(-1, nullptr, WNOHANG) > 0) {
   }
@@ -48,7 +87,7 @@ static void sigchld_handler(int /* s */) {
 }
 
 // TODO: use C++ methods
-static void *get_in_addr(struct sockaddr *sa) {
+static void *get_in_addr(struct sockaddr *sa) noexcept {
   if (sa->sa_family == AF_INET) {
     return &((reinterpret_cast<sockaddr_in *>(sa))->sin_addr);
   }
@@ -56,7 +95,7 @@ static void *get_in_addr(struct sockaddr *sa) {
   return &((reinterpret_cast<sockaddr_in6 *>(sa))->sin6_addr);
 }
 
-static int setup_server() {
+static Socket setup_server() {
   addrinfo hints{};
   hints.ai_family = AF_UNSPEC; // Either IPv4 or IPv6
   hints.ai_socktype = SOCK_STREAM;
@@ -65,35 +104,30 @@ static int setup_server() {
   addrinfo *servinfo = nullptr;
   GetAddrInfo gai_raii{nullptr, PORT, &hints, &servinfo};
 
-  int sockfd = -1;
+  Socket server_sock{-1}; // RAII Socket
   addrinfo *p = servinfo;
   for (; p != nullptr; p = p->ai_next) {
-    void *addr = nullptr;
-
-    if (p->ai_family == AF_INET) {
-      auto *ipv4 = reinterpret_cast<struct sockaddr_in *>(p->ai_addr);
-      addr = &(ipv4->sin_addr);
-    } else {
-      auto *ipv6 = reinterpret_cast<struct sockaddr_in6 *>(p->ai_addr);
-      addr = &(ipv6->sin6_addr);
-    }
-
     std::array<char, INET6_ADDRSTRLEN> ipstr{};
-    inet_ntop(p->ai_family, addr, ipstr.data(), ipstr.size());
-    std::clog << "binding to " << ipstr.data() << '\n';
+    inet_ntop(p->ai_family, get_in_addr(p->ai_addr), ipstr.data(),
+              ipstr.size());
+    std::clog << "binding to " << ipstr.data() << "...\n";
 
-    if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-      throw std::runtime_error("socket");
+    int s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+    if (s == -1) {
+      std::cerr << "socket\n";
+      continue;
     }
+    server_sock.reset(s);
 
     const int yes = 1;
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1) {
+    if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) ==
+        -1) {
       throw std::runtime_error("setsockopt");
     }
 
-    if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-      close(sockfd); // TODO:
+    if (bind(server_sock, p->ai_addr, p->ai_addrlen) == -1) {
       std::cerr << "bind\n";
+      server_sock.reset(-1);
       continue;
     }
     break;
@@ -103,10 +137,10 @@ static int setup_server() {
     throw std::runtime_error("failed to bind");
   }
 
-  if (listen(sockfd, BACKLOG) == -1) {
+  if (listen(server_sock, BACKLOG) == -1) {
     throw std::runtime_error("listen");
   }
-  return sockfd;
+  return server_sock;
 }
 
 static void setup_sigchld() {
@@ -114,20 +148,24 @@ static void setup_sigchld() {
   sa.sa_handler = sigchld_handler;
   sa.sa_flags = SA_RESTART;
   if (sigaction(SIGCHLD, &sa, nullptr) == -1) {
-    throw std::runtime_error("sigaction"); // TODO:errno
+    throw std::runtime_error("sigaction");
   }
 }
 
-static int server_loop(int server_fd) {
+[[noreturn]]
+static void server_loop(Socket server_fd) {
   while (true) {
     sockaddr_storage their_addr{};
     socklen_t sin_size = sizeof their_addr;
     int new_fd =
         accept(server_fd, reinterpret_cast<sockaddr *>(&their_addr), &sin_size);
+
     if (new_fd == -1) {
       std::cerr << "accept\n";
       continue;
     }
+    // RAII Socket
+    Socket accept_sock{new_fd};
 
     std::array<char, INET6_ADDRSTRLEN> s{};
     inet_ntop(their_addr.ss_family,
@@ -136,43 +174,47 @@ static int server_loop(int server_fd) {
     std::clog << "got connection from " << s.data() << '\n';
 
     pid_t pid = fork();
-    if (pid == 0) { // child
-      close(server_fd);
+    if (pid == 0) {      // child
+      server_fd.reset(); // close listener for child
 
       long numbytes = 0;
       std::array<char, MAXDATASIZE> buf{};
       while (true) {
-        numbytes = recv(new_fd, buf.data(), buf.size(), 0);
+        numbytes = recv(accept_sock, buf.data(), buf.size(), 0);
         if (numbytes == -1) {
           std::cerr << "recv\n";
+          accept_sock.reset();
           _exit(1);
         } else if (numbytes == 0) {
           std::cerr << s.data() << " disconnected\n";
           break;
         }
-        if (send(new_fd, buf.data(), static_cast<size_t>(numbytes), 0) == -1) {
+        if (send(accept_sock, buf.data(), static_cast<size_t>(numbytes), 0) ==
+            -1) {
           std::cerr << "send\n";
         }
-        std::cout << "echoed to " << s.data() << '\n';
+        std::clog << "echoed to " << s.data() << '\n';
       }
-      close(new_fd);
+      accept_sock.reset();
       _exit(0);
       // parent
     } else if (pid == -1) {
       std::cerr << "fork\n";
     }
-    close(new_fd); // close sender for parrent
+    close(accept_sock); // close sender for parrent
   }
 }
 
+// TODO: add errno output where it is possible
 int main() {
   try {
-    int server_fd = setup_server(); // TODO: RAII
+    Socket server_fd = setup_server(); // TODO: RAII
     setup_sigchld();
 
-    std::cout << "waiting connections...\n";
+    std::clog << "waiting connections...\n";
 
-    server_loop(server_fd);
+    server_loop(std::move(server_fd));
+    // close(server_fd);
 
   } catch (const std::exception &ex) {
     std::cerr << "Err: " << ex.what() << '\n';
