@@ -1,0 +1,22 @@
+name: CServer CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        run: cmake -DCMAKE_BUILD_TYPE=Debug -B build -S . -G Ninja
+
+      - name: Build
+        run: cmake --build build
