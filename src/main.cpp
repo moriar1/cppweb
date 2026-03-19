@@ -1,16 +1,11 @@
 #include <arpa/inet.h>
-#include <array>
-#include <cerrno>
 #include <csignal>
-#include <ctime>
-#include <exception>
 #include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <stdexcept>
-#include <string>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <system_error>
 #include <unistd.h>
 
 inline constexpr const char *PORT = "3490";
@@ -32,7 +27,7 @@ public:
   GetAddrInfo(const char *hostname, const char *servname,
               const struct addrinfo *hints, struct addrinfo **l_res) {
     if (int rv = getaddrinfo(hostname, servname, hints, l_res); rv != 0) {
-      throw std::runtime_error("gai: " + std::string(gai_strerror(rv)) + '\n');
+      throw std::runtime_error(std::string("gai: ") + gai_strerror(rv));
     }
     this->res = *l_res;
   }
@@ -110,7 +105,7 @@ static Socket setup_server() {
     std::array<char, INET6_ADDRSTRLEN> ipstr{};
     inet_ntop(p->ai_family, get_in_addr(p->ai_addr), ipstr.data(),
               ipstr.size());
-    std::clog << "binding to " << ipstr.data() << "...\n";
+    std::clog << "binding to " << ipstr.data() << '\n';
 
     int s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
     if (s == -1) {
@@ -122,11 +117,11 @@ static Socket setup_server() {
     const int yes = 1;
     if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) ==
         -1) {
-      throw std::runtime_error("setsockopt");
+      throw std::system_error(errno, std::system_category(), "setsockopt");
     }
 
     if (bind(server_sock, p->ai_addr, p->ai_addrlen) == -1) {
-      std::cerr << "bind\n";
+      std::cerr << "bind: " << std::system_category().message(errno) << '\n';
       server_sock.reset(-1);
       continue;
     }
@@ -138,7 +133,7 @@ static Socket setup_server() {
   }
 
   if (listen(server_sock, BACKLOG) == -1) {
-    throw std::runtime_error("listen");
+    throw std::system_error(errno, std::system_category(), "listen");
   }
   return server_sock;
 }
@@ -148,7 +143,7 @@ static void setup_sigchld() {
   sa.sa_handler = sigchld_handler;
   sa.sa_flags = SA_RESTART;
   if (sigaction(SIGCHLD, &sa, nullptr) == -1) {
-    throw std::runtime_error("sigaction");
+    throw std::system_error(errno, std::system_category(), "sigaction");
   }
 }
 
@@ -201,23 +196,20 @@ static void server_loop(Socket server_fd) {
     } else if (pid == -1) {
       std::cerr << "fork\n";
     }
-    close(accept_sock); // close sender for parrent
+    accept_sock.reset(); // close sender for parrent
   }
 }
 
-// TODO: add errno output where it is possible
 int main() {
   try {
-    Socket server_fd = setup_server(); // TODO: RAII
+    Socket server_fd = setup_server();
     setup_sigchld();
 
     std::clog << "waiting connections...\n";
 
     server_loop(std::move(server_fd));
-    // close(server_fd);
-
-  } catch (const std::exception &ex) {
-    std::cerr << "Err: " << ex.what() << '\n';
+  } catch (const std::exception &e) {
+    std::cerr << "Err: " << e.what() << '\n';
     return -1;
   }
 }
