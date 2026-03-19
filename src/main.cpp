@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <array>
 #include <csignal>
 #include <iostream>
 #include <netdb.h>
